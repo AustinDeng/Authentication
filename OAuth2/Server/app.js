@@ -60,6 +60,7 @@ function ensureLogin(req, res, next) {
   // 如果未登录则跳转到登录界面
   // 如果已经登录, 则记录用户相关信息
   req.loginUserId = 123
+  
   next()
 }
 
@@ -203,9 +204,16 @@ function verifyAuthorizationCode(code, appKey, appSecret, redirectUri, callback)
   callback(null, userId)
 }
 
-function generateAccessToken(userId, appKey, callback) {
+// 获取秒时间戳
+function getTimestamp() {
+  return parseInt(Data.now() / 1000, 10)
+}
+
+// 生成 Access Token 
+// expires 表示 token 的有效期
+function generateAccessToken(userId, appKey, expires, callback) {
   // 生成 code
-  let code = randomString(20)
+  let code = randomString(20) + '.' + (getTimestamp() + expires)
 
   // 将 code userId appKey 存到数据库
   // ...
@@ -228,6 +236,16 @@ function invalidParameterError(name) {
   return createApiError('INVALID_PARAMETER', '参数`' + name + '`不正确')
 }
 
+// 从 access_token 中取出时间戳
+function getTimestampFromAccessToken(token) {
+  return Number(token.split('.').pop())
+}
+
+// access_token 过期时,返回错误
+function accessTokenExpiredError() {
+  return createApiError('ACCESS_TOKEN_EXPIRED', 'access_token expired')
+}
+
 function getAccessTokenInfo(token, callback) {
   // 查询数据库中对应的 token 信息
 
@@ -241,6 +259,11 @@ function verifyAccessToken(req, res, next) {
   // 检查参数
   if(!accessToken) return next(missParameterError('access_token'))
   if(!source) return next(missParameterError('source'))
+
+  // 验证 access_token 是否过期
+  if (getTimestamp() > getTimestampFromAccessToken(accessToken)) {
+    return next(accessTokenExpiredError())
+  }
 
   // 查询 access_token 的信息
   database.getAccessTokenInfo(accessToken, function(err, tokenInfo) {
@@ -264,6 +287,8 @@ app.get('/api/v1/articles.json', verifyAccessToken, function(req, res, next) {
   // 处理 API 请求
   // ...
 })
+
+
 
 app.get('/', function(req, res) {
   res.send('Hello, World!')
